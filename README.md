@@ -606,3 +606,182 @@ Create docker/docker-compose.yml:
     # Push to registry
     docker tag advanced_robotics_prod:latest myregistry.com/advanced_robotics:latest
     docker push myregistry.com/advanced_robotics:latest
+
+Exercise 3: Real-Time ROS 2
+
+3.1 Real-Time Node with RT Priority:
+
+Create advanced_robotics/real_time/rt_node.py:
+
+    #!/usr/bin/env python3
+    import rclpy
+    from rclpy.node import Node
+    from std_msgs.msg import Float64
+    import os
+    import threading
+    import psutil
+    import time
+    
+    class RealTimeNode(Node):
+        def __init__(self):
+            super().__init__('real_time_node')
+            
+            # Set real-time priority
+            self.set_realtime_priority(priority=95)
+            
+            # Pin to isolated CPU core
+            self.pin_to_cpu(core=1)
+            
+            # Lock memory to prevent swapping
+            self.lock_memory()
+            
+            # Publishers
+            self.rt_pub = self.create_publisher(
+                Float64, '/real_time/data', 10)
+            
+            # Timer with high frequency
+            timer_period = 0.001  # 1 kHz
+            self.timer = self.create_timer(timer_period, self.timer_callback)
+            
+            # Performance monitoring
+            self.latencies = []
+            self.create_timer(1.0, self.report_performance)
+            
+            self.get_logger().info("Real-Time Node started")
+        
+        def set_realtime_priority(self, priority):
+            """Set SCHED_FIFO real-time priority"""
+            try:
+                # Get current thread ID
+                tid = threading.get_ident()
+                
+                # Set scheduling policy and priority
+                param = os.sched_param(priority)
+                os.sched_setscheduler(0, os.SCHED_FIFO, param)
+                
+                self.get_logger().info(f"Set RT priority to {priority}")
+            except PermissionError:
+                self.get_logger().error("Need root privileges for RT scheduling")
+                self.get_logger().info("Run with: sudo -E python3 rt_node.py")
+        
+        def pin_to_cpu(self, core):
+            """Pin process to specific CPU core"""
+            try:
+                p = psutil.Process()
+                p.cpu_affinity([core])
+                self.get_logger().info(f"Pinned to CPU core {core}")
+            except Exception as e:
+                self.get_logger().error(f"Failed to pin to CPU: {e}")
+        
+        def lock_memory(self):
+            """Lock memory to prevent swapping"""
+            try:
+                import resource
+                resource.setrlimit(resource.RLIMIT_MEMLOCK, 
+                                  (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+                self.get_logger().info("Memory locked")
+            except Exception as e:
+                self.get_logger().error(f"Failed to lock memory: {e}")
+        
+        def timer_callback(self):
+            """High-frequency callback"""
+            start_time = time.perf_counter()
+            
+            # Real-time task
+            msg = Float64()
+            msg.data = time.time()
+            self.rt_pub.publish(msg)
+            
+            # Measure latency
+            latency = (time.perf_counter() - start_time) * 1e6  # microseconds
+            self.latencies.append(latency)
+        
+        def report_performance(self):
+            """Report timing performance"""
+            if self.latencies:
+                avg_latency = sum(self.latencies) / len(self.latencies)
+                max_latency = max(self.latencies)
+                min_latency = min(self.latencies)
+                
+                self.get_logger().info(
+                    f"Latency (μs) - Avg: {avg_latency:.1f}, "
+                    f"Min: {min_latency:.1f}, Max: {max_latency:.1f}"
+                )
+                
+                self.latencies.clear()
+    
+    def main(args=None):
+        rclpy.init(args=args)
+        node = RealTimeNode()
+        
+        # Use single-threaded executor for deterministic behavior
+        executor = rclpy.executors.SingleThreadedExecutor()
+        executor.add_node(node)
+        
+        try:
+            executor.spin()
+        except KeyboardInterrupt:
+            pass
+        
+        node.destroy_node()
+        rclpy.shutdown()
+    
+    if __name__ == '__main__':
+        main()
+
+3.2 Run with Real-Time Privileges:
+
+    # Check current scheduling policy
+    chrt -p $$
+    
+    # Run with real-time priority
+    sudo -E python3 rt_node.py
+    
+    # Verify scheduling policy
+    ps -eo pid,cls,rtprio,ni,pri,cmd | grep rt_node
+    
+    # Monitor with perf
+    sudo perf stat -e context-switches,cpu-migrations,page-faults python3 rt_node.py
+3.3 Real-Time Configuration Script:
+
+Create scripts/setup_realtime.sh:
+
+    #!/bin/bash
+    
+    # Real-time system setup for ROS 2
+    
+    # Check if running as root
+    if [ "$EUID" -ne 0 ]; then 
+        echo "Please run as root"
+        exit 1
+    fi
+    
+    # Configure CPU isolation
+    echo "isolcpus=1,2 nohz_full=1,2 rcu_nocbs=1,2" >> /etc/default/grub
+    update-grub
+    
+    # Set real-time limits
+    echo "@realtime - rtprio 95" >> /etc/security/limits.conf
+    echo "@realtime - memlock unlimited" >> /etc/security/limits.conf
+    
+    # Create real-time user group
+    groupadd realtime
+    usermod -a -G realtime $SUDO_USER
+    
+    # Configure kernel for real-time
+    echo "kernel.sched_rt_runtime_us = 1000000" >> /etc/sysctl.conf
+    echo "kernel.sched_rt_period_us = 1000000" >> /etc/sysctl.conf
+    
+    # Disable CPU frequency scaling
+    echo "performance" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+    
+    # Disable hyper-threading (optional)
+    echo off > /sys/devices/system/cpu/smt/control
+    
+    # Set IRQ affinity
+    echo 1 > /proc/irq/default_smp_affinity
+    
+    echo "Real-time configuration complete. Reboot required."
+
+Exercise 4: QoS Tuning and Performance Optimization
+
