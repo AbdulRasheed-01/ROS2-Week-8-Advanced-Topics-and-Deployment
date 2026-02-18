@@ -353,3 +353,152 @@ Create advanced_robotics/micro_ros/microros_subscriber.py:
     
     if __name__ == '__main__':
         main()
+1.4 Run Micro-ROS System:
+
+    # Terminal 1: Start micro-ROS agent
+    ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+    
+    # Terminal 2: Run ROS 2 subscriber
+    ros2 run advanced_robotics microros_subscriber
+    
+    # Terminal 3: Monitor topics
+    ros2 topic list
+    ros2 topic echo /esp32_counter
+
+Exercise 2: Dockerizing ROS 2 Applications
+
+2.1 Base Dockerfile:
+
+Create docker/base/Dockerfile:
+
+    # Base ROS 2 Humble image
+    FROM ubuntu:22.04
+    
+    # Set environment variables
+    ENV DEBIAN_FRONTEND=noninteractive
+    ENV LANG=en_US.UTF-8
+    ENV ROS_DISTRO=humble
+    
+    # Install basic dependencies
+    RUN apt-get update && apt-get install -y \
+        locales \
+        software-properties-common \
+        curl \
+        gnupg2 \
+        lsb-release \
+        && rm -rf /var/lib/apt/lists/* \
+        && locale-gen en_US en_US.UTF-8
+    
+    # Add ROS 2 repository
+    RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+    
+    # Install ROS 2 Humble (minimal)
+    RUN apt-get update && apt-get install -y \
+        ros-humble-ros-base \
+        python3-colcon-common-extensions \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Install development tools
+    RUN apt-get update && apt-get install -y \
+        python3-pip \
+        python3-vcstool \
+        git \
+        nano \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Source ROS 2
+    RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+    
+    # Set working directory
+    WORKDIR /workspace
+    
+    # Default command
+    CMD ["/bin/bash"]
+2.2 Development Dockerfile:
+
+Create docker/dev/Dockerfile:
+
+    # Development stage with full desktop and debugging tools
+    FROM advanced_robotics_base:latest as dev
+    
+    # Install full desktop (for visualization)
+    RUN apt-get update && apt-get install -y \
+        ros-humble-desktop \
+        ros-humble-rviz2 \
+        ros-humble-gazebo-ros-pkgs \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Install debugging tools
+    RUN apt-get update && apt-get install -y \
+        gdb \
+        valgrind \
+        strace \
+        htop \
+        tmux \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Install Python debugging tools
+    RUN pip3 install \
+        ipython \
+        jupyter \
+        matplotlib \
+        numpy \
+        opencv-python
+    
+    # Set up display for GUI
+    ENV DISPLAY=:0
+    ENV QT_X11_NO_MITSHM=1
+    ENV LIBGL_ALWAYS_SOFTWARE=1
+    
+    # Create workspace
+    WORKDIR /workspace
+    
+    # Copy source code (mounted in development)
+    CMD ["/bin/bash"]
+
+2.3 Production Dockerfile:
+
+Create docker/prod/Dockerfile:
+
+    # Multi-stage build for production
+    FROM advanced_robotics_base:latest as builder
+    
+    # Copy source code
+    COPY src/ /workspace/src/
+    
+    # Build workspace
+    WORKDIR /workspace
+    RUN . /opt/ros/humble/setup.sh && \
+        colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    
+    # Production image (minimal)
+    FROM ubuntu:22.04 as runtime
+    
+    # Install runtime dependencies only
+    RUN apt-get update && apt-get install -y \
+        python3 \
+        python3-yaml \
+        python3-numpy \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Copy built artifacts from builder
+    COPY --from=builder /workspace/install /workspace/install
+    COPY --from=builder /opt/ros/humble /opt/ros/humble
+    
+    # Set environment
+    ENV ROS_DISTRO=humble
+    ENV AMENT_PREFIX_PATH=/workspace/install
+    ENV PYTHONPATH=/workspace/install/lib/python3.10/site-packages:$PYTHONPATH
+    
+    # Source ROS 2 and workspace
+    RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
+        echo "source /workspace/install/setup.bash" >> /root/.bashrc
+    
+    WORKDIR /workspace
+    
+    # Default command
+    CMD ["ros2", "launch", "my_robot", "system.launch.py"]
+
+2.4 Docker Compose for Multi-Container Setup:
+
