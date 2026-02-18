@@ -35,3 +35,14 @@ Static Allocator	  |      No dynamic memory allocation	         |     Safety-cri
 
 Supported Hardware:
 
+STM32 (F4, H7, L4 series)
+
+ESP32 (with FreeRTOS)
+
+Arduino (Portenta, Nicla)
+
+Teensy (4.0, 4.1)
+
+Raspberry Pi Pico
+
+Custom ARM Cortex-M board
