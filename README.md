@@ -82,3 +82,18 @@ Navigation	    |    100 ms	        |      < 10 ms	                QM
 
 Vision Processing	 | 33 ms (30 Hz)	|      < 5 ms	                  QM
 
+Real-Time Configuration:
+
+    # Configure real-time kernel
+    sudo apt-get install linux-image-rt-amd64
+    sudo apt-get install linux-headers-rt-amd64
+    
+    # Set real-time scheduling
+    sudo chrt -f 90 -p $(pgrep -f "robot_node")
+    
+    # Configure CPU isolation
+    # Add to GRUB_CMDLINE_LINUX: isolcpus=1,2 nohz_full=1,2 rcu_nocbs=1,2
+    
+    # Set memory locking
+    sudo ulimit -l unlimited
+
