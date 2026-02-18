@@ -109,3 +109,16 @@ Sensor Data	     |   Best Effort	 |       Volatile	    |        Keep Last	 |    
 Parameters	     |   Reliable	     |       Transient Local	|    Keep All	 |       System configuration
 
 Services	     |   Reliable	     |       Volatile	        |    Keep Last	 |       Request-response
+
+
+Multi-Robot Coordination Patterns:
+
+Pattern	      |          Description        	 |       Use Case
+
+Centralized	  |          Single master node	     |       Small fleets (<10 robots)
+
+Decentralized |	         Peer-to-peer communication |	 Large fleets, resilient
+
+Hierarchical  | 	     Zone leaders	        |        Warehouse automation
+
+Market-based  | 	     Auction for tasks	      |      Heterogeneous robots
