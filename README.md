@@ -152,3 +152,42 @@ Step 1: Install Micro-ROS
     
     # Start micro-ROS agent
     ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+
+Step 2: Install Docker
+
+    # Install Docker Engine
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    
+    # Add user to docker group
+    sudo usermod -aG docker $USER
+    newgrp docker
+    
+    # Test installation
+    docker run hello-world
+    
+    # Install Docker Compose
+    sudo apt-get install docker-compose-plugin
+    
+    # Install NVIDIA container toolkit (for GPU support)
+    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+    sudo apt-get update
+    sudo apt-get install -y nvidia-docker2
+    sudo systemctl restart docker
+
+Step 3: Create Advanced Project Package
+
+    cd ~/ros2_ws/src
+    ros2 pkg create advanced_robotics --build-type ament_python \
+        --dependencies rclpy rclcpp micro_ros_msgs micro_ros_agent \
+                     nav2_msgs moveit_msgs geometry_msgs \
+        --description "Week 8: Advanced Topics and Deployment"
+    
+    cd advanced_robotics
+    mkdir -p advanced_robotics/{micro_ros,docker,cloud,real_time}
+    mkdir -p {docker,config,launch,scripts,benchmarks}
+    mkdir -p docker/{base,deps,app,runtime}
+    mkdir -p config/{micro_ros,dds,qos}
+    mkdir -p benchmarks/{cpu,latency,throughput}
