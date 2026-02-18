@@ -18,3 +18,20 @@ By the end of this week, you will be able to:
 ✅ Implement CI/CD for ROS 2 projects
 
 ✅ Build complete production-grade robot applications
+
+📚 Theory Content
+
+Key Concepts:
+
+Component	          |      Description	                         |     Use Case
+
+Micro-ROS Agent	    |      Bridge between micro-ROS and ROS 2	   |     Runs on Linux, connects to MCU
+
+XRCE Client	        |      XRCE-DDS protocol implementation	     |     Runs on MCU, communicates with agent
+
+Memory Pool	        |      Pre-allocated memory for real-time	   |     Ensures deterministic behavior
+
+Static Allocator	  |      No dynamic memory allocation	         |     Safety-critical systems
+
+Supported Hardware:
+
