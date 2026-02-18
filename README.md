@@ -122,3 +122,33 @@ Decentralized |	         Peer-to-peer communication |	 Large fleets, resilient
 Hierarchical  | 	     Zone leaders	        |        Warehouse automation
 
 Market-based  | 	     Auction for tasks	      |      Heterogeneous robots
+
+
+⚙️ Setup and Installation
+
+Step 1: Install Micro-ROS
+
+    # Create micro-ROS workspace
+    mkdir -p ~/microros_ws/src
+    cd ~/microros_ws
+    
+    # Clone micro-ROS repository
+    git clone -b humble https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup
+    
+    # Install dependencies
+    sudo apt update && rosdep update
+    rosdep install --from-paths src --ignore-src -y
+    
+    # Build micro-ROS tools
+    colcon build --packages-select micro_ros_setup
+    source install/setup.bash
+    
+    # Create micro-ROS firmware for your target
+    ros2 run micro_ros_setup create_firmware_ws.sh freertos
+    
+    # Build for specific hardware (example: STM32F4)
+    ros2 run micro_ros_setup configure_firmware.sh stm32f4 -t <transport>
+    ros2 run micro_ros_setup build_firmware.sh
+    
+    # Start micro-ROS agent
+    ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
