@@ -46,3 +46,39 @@ Teensy (4.0, 4.1)
 Raspberry Pi Pico
 
 Custom ARM Cortex-M board
+
+8.2 Docker for ROS 2
+
+Docker Layers for ROS 2:
+
+    # Base layer (OS + ROS 2 core)
+    FROM ubuntu:22.04
+    RUN apt-get update && apt-get install -y ros-humble-desktop
+    
+    # Dependencies layer
+    FROM base AS deps
+    COPY dependencies.sh .
+    RUN ./dependencies.sh
+    
+    # Application layer
+    FROM deps AS app
+    COPY src/ /workspace/src
+    RUN colcon build
+    
+    # Runtime layer
+    FROM app AS runtime
+    CMD ["ros2", "launch", "my_robot", "system.launch.py"]
+8.3 Real-Time ROS 2
+
+Real-Time Requirements:
+
+Application	    |    Deadline	      |      Jitter Tolerance	        Safety Level
+
+Motor Control	  |    1-10 ms	      |      < 100 μs	                SIL 2/3
+
+Sensor Fusion	  |    10-50 ms	      |      < 1 ms	                  SIL 1
+
+Navigation	    |    100 ms	        |      < 10 ms	                QM
+
+Vision Processing	 | 33 ms (30 Hz)	|      < 5 ms	                  QM
+
