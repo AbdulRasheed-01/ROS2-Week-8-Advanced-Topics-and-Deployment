@@ -785,3 +785,313 @@ Create scripts/setup_realtime.sh:
 
 Exercise 4: QoS Tuning and Performance Optimization
 
+4.1 QoS Benchmark Node:
+
+Create advanced_robotics/benchmarks/qos_benchmark.py:
+    
+    #!/usr/bin/env python3
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+    from std_msgs.msg import String
+    import time
+    import numpy as np
+    import csv
+    from datetime import datetime
+    
+    class QoSBenchmark(Node):
+        def __init__(self):
+            super().__init__('qos_benchmark')
+            
+            # Test configurations
+            self.qos_configs = [
+                {
+                    'name': 'Reliable Low Latency',
+                    'qos': QoSProfile(
+                        depth=5,
+                        reliability=ReliabilityPolicy.RELIABLE,
+                        durability=DurabilityPolicy.VOLATILE,
+                        history=HistoryPolicy.KEEP_LAST
+                    )
+                },
+                {
+                    'name': 'Best Effort',
+                    'qos': QoSProfile(
+                        depth=1,
+                        reliability=ReliabilityPolicy.BEST_EFFORT,
+                        durability=DurabilityPolicy.VOLATILE,
+                        history=HistoryPolicy.KEEP_LAST
+                    )
+                },
+                {
+                    'name': 'Transient Local',
+                    'qos': QoSProfile(
+                        depth=10,
+                        reliability=ReliabilityPolicy.RELIABLE,
+                        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                        history=HistoryPolicy.KEEP_LAST
+                    )
+                },
+                {
+                    'name': 'Keep All',
+                    'qos': QoSProfile(
+                        depth=100,
+                        reliability=ReliabilityPolicy.RELIABLE,
+                        durability=DurabilityPolicy.VOLATILE,
+                        history=HistoryPolicy.KEEP_ALL
+                    )
+                }
+            ]
+            
+            self.results = {}
+            
+            # Run benchmarks
+            self.run_all_benchmarks()
+            
+            # Save results
+            self.save_results()
+            
+            self.get_logger().info("QoS Benchmark completed")
+        
+        def run_all_benchmarks(self):
+            """Test all QoS configurations"""
+            for config in self.qos_configs:
+                self.get_logger().info(f"\nTesting: {config['name']}")
+                
+                # Create publisher and subscriber
+                pub = self.create_publisher(String, 'test_topic', config['qos'])
+                sub = self.create_subscription(
+                    String, 'test_topic', self.callback, config['qos'])
+                
+                # Test parameters
+                message_count = 1000
+                message_size = 1024  # bytes
+                latencies = []
+                throughput_start = time.time()
+                
+                # Send messages
+                for i in range(message_count):
+                    msg = String()
+                    msg.data = 'X' * message_size
+                    
+                    start_time = time.perf_counter()
+                    pub.publish(msg)
+                    
+                    # Measure round trip
+                    rclpy.spin_once(self, timeout_sec=0.001)
+                    
+                    if hasattr(self, 'last_receive_time'):
+                        latency = (self.last_receive_time - start_time) * 1e6
+                        latencies.append(latency)
+                    
+                    self.last_send_time = start_time
+                
+                throughput_end = time.time()
+                
+                # Calculate metrics
+                throughput = message_count / (throughput_end - throughput_start)
+                
+                # Store results
+                self.results[config['name']] = {
+                    'latency_us': {
+                        'mean': np.mean(latencies),
+                        'std': np.std(latencies),
+                        'min': np.min(latencies),
+                        'max': np.max(latencies),
+                        'p99': np.percentile(latencies, 99)
+                    },
+                    'throughput_hz': throughput,
+                    'loss_rate': self.calculate_loss_rate(message_count)
+                }
+                
+                # Log results
+                self.get_logger().info(
+                    f"  Mean Latency: {self.results[config['name']]['latency_us']['mean']:.2f} μs\n"
+                    f"  Throughput: {throughput:.2f} Hz\n"
+                    f"  P99 Latency: {self.results[config['name']]['latency_us']['p99']:.2f} μs"
+                )
+        
+        def callback(self, msg):
+            self.last_receive_time = time.perf_counter()
+            self.received_count += 1
+        
+        def calculate_loss_rate(self, expected):
+            return (expected - self.received_count) / expected * 100
+        
+        def save_results(self):
+            """Save benchmark results to CSV"""
+            filename = f"qos_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+            with open(filename, 'w', newline='') as csvfile:
+                fieldnames = ['Config', 'Mean Latency (μs)', 'Std Dev', 'Min', 'Max', 'P99', 'Throughput (Hz)', 'Loss Rate (%)']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                
+                writer.writeheader()
+                for config, metrics in self.results.items():
+                    writer.writerow({
+                        'Config': config,
+                        'Mean Latency (μs)': f"{metrics['latency_us']['mean']:.2f}",
+                        'Std Dev': f"{metrics['latency_us']['std']:.2f}",
+                        'Min': f"{metrics['latency_us']['min']:.2f}",
+                        'Max': f"{metrics['latency_us']['max']:.2f}",
+                        'P99': f"{metrics['latency_us']['p99']:.2f}",
+                        'Throughput (Hz)': f"{metrics['throughput_hz']:.2f}",
+                        'Loss Rate (%)': f"{metrics['loss_rate']:.2f}"
+                    })
+            
+            self.get_logger().info(f"Results saved to {filename}")
+    
+    def main(args=None):
+        rclpy.init(args=args)
+        node = QoSBenchmark()
+        
+        rclpy.spin(node)
+        node.destroy_node()
+        rclpy.shutdown()
+    
+    if __name__ == '__main__':
+        main()
+
+4.2 DDS Tuning Configuration:
+
+Create config/dds/fastdds.xml:
+
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+        <profiles>
+            <!-- Transport configuration -->
+            <transport_descriptors>
+                <transport_descriptor>
+                    <transport_id>udp_transport</transport_id>
+                    <type>UDPv4</type>
+                    <sendBufferSize>65536</sendBufferSize>
+                    <receiveBufferSize>65536</receiveBufferSize>
+                    <TTL>1</TTL>
+                    <non_blocking_send>false</non_blocking_send>
+                </transport_descriptor>
+                
+                <transport_descriptor>
+                    <transport_id>shm_transport</transport_id>
+                    <type>SHM</type>
+                    <segment_size>104857600</segment_size>
+                    <port_queue_capacity>100</port_queue_capacity>
+                    <healthy_check_timeout_ms>1000</healthy_check_timeout_ms>
+                    <rtps_dump_file>shm_dump.log</rtps_dump_file>
+                </transport_descriptor>
+            </transport_descriptors>
+            
+            <!-- Participant configuration -->
+            <participant profile_name="default_participant" is_default_profile="true">
+                <rtps>
+                    <name>DefaultParticipant</name>
+                    
+                    <!-- Discovery settings -->
+                    <builtin>
+                        <discovery_config>
+                            <discoveryProtocol>SIMPLE</discoveryProtocol>
+                            <ignoreParticipantFlags>NO_FILTER</ignoreParticipantFlags>
+                            <leaseDuration>20</leaseDuration>
+                            <leaseAnnouncement>5</leaseAnnouncement>
+                            <initialAnnouncements>
+                                <count>5</count>
+                                <period>
+                                    <sec>1</sec>
+                                    <nanosec>0</nanosec>
+                                </period>
+                            </initialAnnouncements>
+                        </discovery_config>
+                        
+                        <metatrafficUnicastLocatorList>
+                            <locator>
+                                <udpv4>
+                                    <address>239.255.0.1</address>
+                                    <port>7400</port>
+                                </udpv4>
+                            </locator>
+                        </metatrafficUnicastLocatorList>
+                    </builtin>
+                    
+                    <!-- Transport selection -->
+                    <userTransports>
+                        <transport_id>shm_transport</transport_id>
+                        <transport_id>udp_transport</transport_id>
+                    </userTransports>
+                    <useBuiltinTransports>false</useBuiltinTransports>
+                    
+                    <!-- Thread settings -->
+                    <publishMode>ASYNCHRONOUS</publishMode>
+                    <sendSocketBufferSize>65536</sendSocketBufferSize>
+                    <listenSocketBufferSize>65536</listenSocketBufferSize>
+                </rtps>
+            </participant>
+            
+            <!-- Publisher configuration -->
+            <publisher profile_name="reliable_publisher" is_default_profile="true">
+                <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
+                <qos>
+                    <reliability>
+                        <kind>RELIABLE_RELIABILITY_QOS</kind>
+                        <max_blocking_time>
+                            <sec>0</sec>
+                            <nanosec>100000000</nanosec>
+                        </max_blocking_time>
+                    </reliability>
+                    <durability>
+                        <kind>VOLATILE_DURABILITY_QOS</kind>
+                    </durability>
+                    <publishMode>
+                        <kind>ASYNCHRONOUS_PUBLISH_MODE</kind>
+                    </publishMode>
+                    <history>
+                        <kind>KEEP_LAST_HISTORY_QOS</kind>
+                        <depth>10</depth>
+                    </history>
+                </qos>
+                <times>
+                    <initialHeartbeatDelay>
+                        <sec>0</sec>
+                        <nanosec>10000000</nanosec>
+                    </initialHeartbeatDelay>
+                    <heartbeatPeriod>
+                        <sec>0</sec>
+                        <nanosec>100000000</nanosec>
+                    </heartbeatPeriod>
+                </times>
+            </publisher>
+            
+            <!-- Subscriber configuration -->
+            <subscriber profile_name="reliable_subscriber" is_default_profile="true">
+                <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
+                <qos>
+                    <reliability>
+                        <kind>RELIABLE_RELIABILITY_QOS</kind>
+                    </reliability>
+                    <durability>
+                        <kind>VOLATILE_DURABILITY_QOS</kind>
+                    </durability>
+                </qos>
+            </subscriber>
+        </profiles>
+    </dds>
+
+4.3 Apply DDS Configuration:
+
+    # Set Fast DDS configuration
+    export FASTRTPS_DEFAULT_PROFILES_FILE=/path/to/fastdds.xml
+    
+    # Set RMW implementation
+    export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    
+    # Alternative: Use Cyclone DDS
+    export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    
+    # Set domain ID for network isolation
+    export ROS_DOMAIN_ID=42
+    
+    # Network interface binding
+    export ROS_LOCALHOST_ONLY=0  # 1 to restrict to localhost
+    
+    # Run with custom config
+    ros2 run my_package my_node --ros-args --params-file config/optimized_params.yaml
+
+Exercise 5: Multi-Robot Fleet Management
