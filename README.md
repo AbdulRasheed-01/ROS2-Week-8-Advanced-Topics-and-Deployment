@@ -191,3 +191,114 @@ Step 3: Create Advanced Project Package
     mkdir -p docker/{base,deps,app,runtime}
     mkdir -p config/{micro_ros,dds,qos}
     mkdir -p benchmarks/{cpu,latency,throughput}
+
+🔧 Practical Exercises
+
+Exercise 1: Micro-ROS with ESP32
+
+1.1 Setup ESP32 for Micro-ROS:
+
+    # Install ESP32 toolchain
+    sudo apt-get install git wget flex bison gperf python3 python3-pip \
+        python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util
+    
+    # Create micro-ROS workspace for ESP32
+    cd ~/microros_ws
+    ros2 run micro_ros_setup create_firmware_ws.sh freertos
+    
+    # Configure for ESP32
+    ros2 run micro_ros_setup configure_firmware.sh esp32 -t udp -i 192.168.1.100 -p 8888
+    
+    # Build firmware
+    ros2 run micro_ros_setup build_firmware.sh
+    
+    # Flash to ESP32
+    ros2 run micro_ros_setup flash_firmware.sh
+    
+1.2 Micro-ROS Publisher Node (ESP32 Arduino):
+
+Create firmware/esp32_publisher.ino:
+
+    #include <micro_ros_arduino.h>
+    #include <stdio.h>
+    #include <rcl/rcl.h>
+    #include <rcl/error_handling.h>
+    #include <rclc/rclc.h>
+    #include <rclc/executor.h>
+    #include <std_msgs/msg/int32.h>
+    
+    // ROS 2 entities
+    rcl_publisher_t publisher;
+    std_msgs__msg__Int32 msg;
+    rclc_support_t support;
+    rcl_allocator_t allocator;
+    rcl_node_t node;
+    rcl_timer_t timer;
+    rclc_executor_t executor;
+    
+    // Error handling
+    #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+    #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+    
+    void error_loop() {
+      while(1) {
+        delay(100);
+      }
+    }
+    
+    void timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
+      RCLC_UNUSED(last_call_time);
+      static int counter = 0;
+      
+      if (timer != NULL) {
+        msg.data = counter++;
+        RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+        Serial.printf("Published: %d\n", msg.data);
+      }
+    }
+    
+    void setup() {
+      Serial.begin(115200);
+      delay(2000);
+      
+      // Set up micro-ROS transport (WiFi or Serial)
+      set_microros_wifi_transports("YOUR_SSID", "YOUR_PASSWORD", "192.168.1.100", 8888);
+      // OR for serial: set_microros_serial_transports(Serial);
+      
+      delay(2000);
+      
+      allocator = rcl_get_default_allocator();
+      
+      // Create init_options
+      RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+      
+      // Create node
+      RCCHECK(rclc_node_init_default(&node, "esp32_node", "", &support));
+      
+      // Create publisher
+      RCCHECK(rclc_publisher_init_default(
+        &publisher,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+        "esp32_counter"));
+      
+      // Create timer
+      const unsigned int timer_timeout = 1000;
+      RCCHECK(rclc_timer_init_default(
+        &timer,
+        &support,
+        RCL_MS_TO_NS(timer_timeout),
+        timer_callback));
+      
+      // Create executor
+      executor = rclc_executor_get_zero_initialized_executor();
+      RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+      RCCHECK(rclc_executor_add_timer(&executor, &timer));
+      
+      Serial.println("Micro-ROS node started");
+    }
+    
+    void loop() {
+      delay(100);
+      RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+    }
