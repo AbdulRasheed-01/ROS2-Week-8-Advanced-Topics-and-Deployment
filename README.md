@@ -96,4 +96,16 @@ Real-Time Configuration:
     
     # Set memory locking
     sudo ulimit -l unlimited
+8.4 Performance Optimization
 
+QoS Profiles Comparison:
+
+Profile	         |   Reliability	 |       Durability	    |        History	 |       Use Case
+
+System Default	 |   Reliable	     |       Volatile	    |        Keep Last	 |       General purpose
+
+Sensor Data	     |   Best Effort	 |       Volatile	    |        Keep Last	 |       High-frequency sensors
+
+Parameters	     |   Reliable	     |       Transient Local	|    Keep All	 |       System configuration
+
+Services	     |   Reliable	     |       Volatile	        |    Keep Last	 |       Request-response
