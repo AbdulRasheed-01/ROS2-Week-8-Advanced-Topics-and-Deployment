@@ -502,3 +502,107 @@ Create docker/prod/Dockerfile:
 
 2.4 Docker Compose for Multi-Container Setup:
 
+Create docker/docker-compose.yml:
+
+    version: '3.8'
+    
+    services:
+      # Micro-ROS Agent
+      microros_agent:
+        image: microros/micro-ros-agent:humble
+        network_mode: host
+        command: udp4 --port 8888
+        restart: unless-stopped
+        
+      # Robot Core (Navigation + Control)
+      robot_core:
+        build:
+          context: ..
+          dockerfile: docker/prod/Dockerfile
+        network_mode: host
+        ipc: host
+        pid: host
+        privileged: true
+        environment:
+          - ROS_DOMAIN_ID=42
+          - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+        volumes:
+          - /tmp/.X11-unix:/tmp/.X11-unix:rw
+          - /dev:/dev:ro
+        devices:
+          - /dev/ttyUSB0:/dev/ttyUSB0
+        command: ros2 launch robot_navigation navigation_stack.launch.py
+        restart: unless-stopped
+        
+      # Perception (Vision + ML)
+      perception:
+        image: nvidia/cuda:11.8-runtime-ubuntu22.04
+        runtime: nvidia
+        network_mode: host
+        environment:
+          - NVIDIA_VISIBLE_DEVICES=all
+          - ROS_DOMAIN_ID=42
+        volumes:
+          - ./models:/models
+        command: ros2 run robot_perception perception_node
+        
+      # Fleet Manager
+      fleet_manager:
+        build:
+          context: ..
+          dockerfile: docker/fleet/Dockerfile
+        network_mode: host
+        environment:
+          - ROS_DOMAIN_ID=42
+        command: ros2 run fleet_manager fleet_manager_node
+        
+      # Database (for logging)
+      influxdb:
+        image: influxdb:2.7
+        ports:
+          - "8086:8086"
+        volumes:
+          - influxdb_data:/var/lib/influxdb2
+          
+      # Visualization
+      viz:
+        build:
+          context: ..
+          dockerfile: docker/dev/Dockerfile
+        network_mode: host
+        environment:
+          - DISPLAY=${DISPLAY}
+          - ROS_DOMAIN_ID=42
+        volumes:
+          - /tmp/.X11-unix:/tmp/.X11-unix:rw
+        command: rviz2 -d /workspace/config/navigation.rviz
+        
+    volumes:
+      influxdb_data:
+2.5 Build and Run Docker Containers:
+
+    # Build base image
+    cd ~/ros2_ws/src/advanced_robotics/docker
+    docker build -t advanced_robotics_base:latest -f base/Dockerfile .
+    
+    # Build development image
+    docker build -t advanced_robotics_dev:latest -f dev/Dockerfile .
+    
+    # Build production image
+    docker build -t advanced_robotics_prod:latest -f prod/Dockerfile .
+    
+    # Run with Docker Compose
+    docker-compose up -d
+    
+    # Check logs
+    docker-compose logs -f robot_core
+    
+    # Execute commands in running container
+    docker exec -it advanced-robotics_robot_core_1 bash
+    
+    # Stop all containers
+    docker-compose down
+    
+    # Push to registry
+    docker tag advanced_robotics_prod:latest myregistry.com/advanced_robotics:latest
+    docker push myregistry.com/advanced_robotics:latest
