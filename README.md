@@ -1,5 +1,4 @@
 # ROS2-Week-8-Advanced-Topics-and-Deployment
-
 🎯 Learning Objectives
 By the end of this week, you will be able to:
 
